@@ -96,15 +96,18 @@ export const GettingStarted = () => {
               <CircularProgress progress={progressPercentage} />
             )}
             <span>Getting started</span>
-            <span className="text-muted-foreground ml-auto text-xs">{progressPercentage}%</span>
+            <span className="ml-auto text-xs text-gray-500">{progressPercentage}%</span>
           </SidebarMenuButton>
         </CollapsibleTrigger>
         <CollapsibleContent className="data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 absolute mb-8 w-full origin-bottom overflow-hidden py-3 data-[state=closed]:duration-300 data-[state=open]:duration-200">
           {status === "completed" ? (
-            <div className="border-muted bg-popover rounded-lg border pb-4 shadow-sm">
+            <div className="rounded-lg border border-gray-200 bg-white pb-4 shadow-sm">
               <div className="mr-3 ml-4 flex h-11 items-center justify-between">
                 <span className="font-medium">You are all set!</span>
-                <button onClick={() => setStatus("dismissed")} className="ml-4 cursor-pointer transition-colors">
+                <button
+                  onClick={() => setStatus("dismissed")}
+                  className="ml-4 cursor-pointer transition-colors hover:text-black/80"
+                >
                   <X className="h-4 w-4" />
                   <span className="sr-only">Close</span>
                 </button>
@@ -118,7 +121,7 @@ export const GettingStarted = () => {
               </div>
             </div>
           ) : (
-            <div className="bg-popover border-muted mt-2 rounded-lg border px-1 pb-4 shadow-sm">
+            <div className="mt-2 rounded-lg border border-gray-200 bg-white px-1 pb-4 shadow-sm">
               <CollapsibleTrigger asChild>
                 <div className="mx-3 flex h-11 cursor-pointer items-center justify-between">
                   <span className="font-medium">Getting started</span>
@@ -139,15 +142,15 @@ export const GettingStarted = () => {
                     <div
                       className={cn(
                         "flex h-4 w-4 items-center justify-center rounded-full border",
-                        item.completed ? "border-blue-500 bg-blue-500" : "border-input dark:bg-muted bg-white",
+                        item.completed ? "border-blue-500 bg-blue-500" : "border-gray-300 bg-white",
                       )}
                     >
                       {item.completed ? <CheckIcon /> : null}
                     </div>
                     {!item.completed ? (
-                      <span className="text-foreground text-left">{item.title}</span>
+                      <span className="text-left">{item.title}</span>
                     ) : (
-                      <span className="text-muted-foreground line-through">{item.title}</span>
+                      <span className="text-gray-400 line-through">{item.title}</span>
                     )}
                   </SidebarMenuButton>
                 ))}

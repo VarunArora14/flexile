@@ -164,7 +164,9 @@ export const ColumnSettingsToggle = ({
         {!isDefaultState && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={onResetToDefaults}>Reset to defaults</DropdownMenuItem>
+            <DropdownMenuItem variant="destructive" onSelect={onResetToDefaults}>
+              Reset to defaults
+            </DropdownMenuItem>
           </>
         )}
       </DropdownMenuContent>

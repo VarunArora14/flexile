@@ -1,17 +1,14 @@
 "use client";
-import { CircleCheck, Plus } from "lucide-react";
+import { CircleCheck } from "lucide-react";
 import React from "react";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import DataTable, { createColumnHelper, useTable } from "@/components/DataTable";
 import Placeholder from "@/components/Placeholder";
 import TableSkeleton from "@/components/TableSkeleton";
-import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { useCurrentCompany, useCurrentUser } from "@/global";
+import { useCurrentCompany } from "@/global";
 import type { RouterOutput } from "@/trpc";
 import { trpc } from "@/trpc/client";
-import { useIsMobile } from "@/utils/use-mobile";
-import NewOptionPoolModal from "./NewOptionPoolModal";
 
 type OptionPool = RouterOutput["optionPools"]["list"][number];
 
@@ -30,33 +27,14 @@ const columns = [
 ];
 
 export default function OptionPools() {
-  const isMobile = useIsMobile();
   const company = useCurrentCompany();
-  const user = useCurrentUser();
   const { data = [], isLoading } = trpc.optionPools.list.useQuery({ companyId: company.id });
-  const [open, setOpen] = React.useState(false);
 
   const table = useTable({ columns, data });
 
   return (
     <>
-      <DashboardHeader
-        title="Option pools"
-        headerActions={
-          user.roles.administrator ? (
-            isMobile ? (
-              <Button variant="floating-action" onClick={() => setOpen(true)}>
-                <Plus />
-              </Button>
-            ) : (
-              <Button size="small" onClick={() => setOpen(true)}>
-                New option pool
-              </Button>
-            )
-          ) : null
-        }
-      />
-      <NewOptionPoolModal open={open} onOpenChange={setOpen} />
+      <DashboardHeader title="Option pools" />
       {isLoading ? (
         <TableSkeleton columns={5} />
       ) : data.length > 0 ? (

@@ -41,7 +41,6 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/utils";
 import { useIsMobile } from "@/utils/use-mobile";
-import TableSkeleton from "./TableSkeleton";
 
 declare module "@tanstack/react-table" {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -105,7 +104,6 @@ interface TableProps<T> {
     onClearSelection: () => void;
   }) => React.ReactNode;
   selectionActions?: (selectedRows: T[]) => React.ReactNode;
-  isLoading?: boolean;
 }
 
 export default function DataTable<T extends RowData>({
@@ -116,7 +114,6 @@ export default function DataTable<T extends RowData>({
   tabsColumn: tabsColumnName,
   contextMenuContent,
   selectionActions,
-  isLoading,
 }: TableProps<T>) {
   const isMobile = useIsMobile();
 
@@ -236,7 +233,7 @@ export default function DataTable<T extends RowData>({
                       return (
                         <DropdownMenuSub key={column.id}>
                           <DropdownMenuSubTrigger className="max-md:h-11">
-                            <div className="text-foreground box-border flex items-center gap-1">
+                            <div className="box-border flex items-center gap-1">
                               <span>{getColumnName(column)}</span>
                               {Array.isArray(filterValue) && filterValue.length > 0 && (
                                 <Badge variant="secondary" className="rounded-sm px-1 font-normal">
@@ -278,7 +275,7 @@ export default function DataTable<T extends RowData>({
                     {activeFilterCount > 0 && (
                       <>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onSelect={() => table.resetColumnFilters(true)}>
+                        <DropdownMenuItem variant="destructive" onSelect={() => table.resetColumnFilters(true)}>
                           Clear all filters
                         </DropdownMenuItem>
                       </>
@@ -317,7 +314,7 @@ export default function DataTable<T extends RowData>({
                 <button
                   onClick={() => tabFilterColumn.setFilterValue(undefined)}
                   className={`bg-secondary h-9 rounded-full border px-4 text-sm leading-5 font-medium ${
-                    !tabFilterValue?.length ? "border-blue-600 !bg-blue-500/10" : "border-border"
+                    !tabFilterValue?.length ? "border-blue-600 !bg-blue-600/5" : "border-border"
                   }`}
                 >
                   All
@@ -336,7 +333,7 @@ export default function DataTable<T extends RowData>({
                       );
                     }}
                     className={`bg-secondary h-9 rounded-full border px-4 text-sm leading-5 font-medium whitespace-nowrap ${
-                      tabFilterValue?.includes(option) ? "border-blue-600 !bg-blue-500/10" : "border-border"
+                      tabFilterValue?.includes(option) ? "border-blue-600 !bg-blue-600/5" : "border-border"
                     }`}
                   >
                     {option}
@@ -385,9 +382,7 @@ export default function DataTable<T extends RowData>({
           ))}
         </TableHeader>
         <TableBody className="not-print:max-md:contents">
-          {isLoading ? (
-            <TableSkeleton columns={data.headers[0]?.headers.length || 6} hasSelection={selectable} renderRowsOnly />
-          ) : data.rows.length > 0 ? (
+          {data.rows.length > 0 ? (
             data.rows.map((row) => {
               const isSelected = row.getIsSelected();
               const rowContent = (
@@ -418,7 +413,7 @@ export default function DataTable<T extends RowData>({
                         onClick={(e) => cell.column.id === "actions" && e.stopPropagation()}
                       >
                         {typeof cell.column.columnDef.header === "string" && (
-                          <div className="text-muted-foreground md:hidden print:hidden" aria-hidden>
+                          <div className="text-gray-500 md:hidden print:hidden" aria-hidden>
                             {cell.column.columnDef.header}
                           </div>
                         )}

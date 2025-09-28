@@ -194,9 +194,7 @@ export default function Details() {
             />
           </div>
 
-          <div className="text-muted-foreground text-xs">
-            Flexile is only available for companies based in the United States.
-          </div>
+          <div className="text-xs">Flexile is only available for companies based in the United States.</div>
         </div>
         <MutationStatusButton
           mutation={updateSettings}

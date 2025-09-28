@@ -280,7 +280,7 @@ export default function CapTable() {
         headerActions={
           isMobile && canViewInvestor && investorsTable.getRowModel().rows.some((r) => r.getCanSelect()) ? (
             <button
-              className="text-link p-2"
+              className="p-2 text-blue-600"
               onClick={() => investorsTable.toggleAllRowsSelected(!investorsTable.getIsAllRowsSelected())}
             >
               {investorsTable.getIsAllRowsSelected() ? "Unselect all" : "Select all"}

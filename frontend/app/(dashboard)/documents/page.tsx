@@ -22,6 +22,7 @@ import Placeholder from "@/components/Placeholder";
 import { Editor as RichTextEditor } from "@/components/RichText";
 import SignForm from "@/components/SignForm";
 import Status, { type Variant as StatusVariant } from "@/components/Status";
+import TableSkeleton from "@/components/TableSkeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -196,7 +197,7 @@ export default function DocumentsPage() {
                 <div className="flex h-5 w-4 items-center justify-center">
                   <Status variant={variant} />
                 </div>
-                <div className="text-muted-foreground">{formatDate(document.createdAt)}</div>
+                <div className="text-gray-600">{formatDate(document.createdAt)}</div>
               </div>
             );
           },
@@ -304,7 +305,10 @@ export default function DocumentsPage() {
         title="Documents"
         headerActions={
           isMobile && table.options.enableRowSelection ? (
-            <button className="text-link" onClick={() => table.toggleAllRowsSelected(!table.getIsAllRowsSelected())}>
+            <button
+              className="text-blue-600"
+              onClick={() => table.toggleAllRowsSelected(!table.getIsAllRowsSelected())}
+            >
               {table.getIsAllRowsSelected() ? "Unselect all" : "Select all"}
             </button>
           ) : null
@@ -350,7 +354,9 @@ export default function DocumentsPage() {
         </Alert>
       ) : null}
 
-      {documents.length > 0 || isLoading ? (
+      {isLoading ? (
+        <TableSkeleton columns={6} />
+      ) : documents.length > 0 ? (
         <>
           <DataTable
             table={table}
@@ -366,7 +372,6 @@ export default function DocumentsPage() {
                 onClearSelection={onClearSelection}
               />
             )}
-            isLoading={isLoading}
           />
           {signDocument ? <SignDocumentModal document={signDocument} onClose={() => setSignDocumentId(null)} /> : null}
           {sharingDocument ? (

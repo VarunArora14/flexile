@@ -2,7 +2,6 @@ import { db } from "@test/db";
 import { companiesFactory } from "@test/factories/companies";
 import { documentsFactory } from "@test/factories/documents";
 import { usersFactory } from "@test/factories/users";
-import { wiseRecipientsFactory } from "@test/factories/wiseRecipients";
 import { subDays } from "date-fns";
 import { eq } from "drizzle-orm";
 import { PayRateType } from "@/db/enums";
@@ -11,7 +10,6 @@ import { assert } from "@/utils/assert";
 
 type CreateOptions = {
   withoutContract?: boolean;
-  withoutBankAccount?: boolean;
   withUnsignedContract?: boolean;
 };
 
@@ -37,10 +35,6 @@ export const companyContractorsFactory = {
     const administrator = await db.query.companyAdministrators.findFirst({
       where: eq(companyAdministrators.companyId, companyId),
     });
-
-    if (!options.withoutBankAccount) {
-      await wiseRecipientsFactory.create({ userId: createdContractor.userId });
-    }
 
     if (!options.withoutContract) {
       await documentsFactory.create(

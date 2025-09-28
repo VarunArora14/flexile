@@ -1,5 +1,4 @@
 "use client";
-import { useMutation } from "@tanstack/react-query";
 import { CircleCheck, Plus, Trash2 } from "lucide-react";
 import React, { useMemo, useState } from "react";
 import CompanyUpdateModal from "@/app/(dashboard)/updates/company/CompanyUpdateModal";
@@ -14,8 +13,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCurrentCompany, useCurrentUser } from "@/global";
 import { trpc } from "@/trpc/client";
-import { request } from "@/utils/request";
-import { company_company_update_path } from "@/utils/routes";
 import { formatDate } from "@/utils/time";
 import { useIsMobile } from "@/utils/use-mobile";
 
@@ -60,7 +57,7 @@ export default function CompanyUpdates() {
                 <Plus />
               </Button>
             ) : (
-              <Button variant="outline" size="small" onClick={handleNewUpdate}>
+              <Button size="small" onClick={handleNewUpdate}>
                 New update
               </Button>
             )
@@ -99,15 +96,8 @@ const AdminList = ({ onEditUpdate }: { onEditUpdate: (update: UpdateListItem) =>
 
   const [deletingUpdate, setDeletingUpdate] = useState<string | null>(null);
 
-  const deleteMutation = useMutation({
-    mutationFn: async (updateId: string) => {
-      await request({
-        method: "DELETE",
-        url: company_company_update_path(company.externalId, updateId),
-        accept: "json",
-        assertOk: true,
-      });
-
+  const deleteMutation = trpc.companyUpdates.delete.useMutation({
+    onSuccess: () => {
       void trpcUtils.companyUpdates.list.invalidate();
       setDeletingUpdate(null);
     },
@@ -134,12 +124,12 @@ const AdminList = ({ onEditUpdate }: { onEditUpdate: (update: UpdateListItem) =>
         cell: (info) => (
           <Button
             aria-label="Remove"
-            variant="ghost"
+            variant="outline"
             onClick={(e) => {
               e.stopPropagation();
               setDeletingUpdate(info.row.original.id);
             }}
-            className="hover:text-link inline-flex items-center text-inherit"
+            className="inline-flex cursor-pointer items-center border-none bg-transparent text-inherit underline hover:text-blue-600"
           >
             <Trash2 className="size-4" />
           </Button>
@@ -159,7 +149,7 @@ const AdminList = ({ onEditUpdate }: { onEditUpdate: (update: UpdateListItem) =>
             <div className="flex w-3xs flex-col gap-2">
               <div>
                 <div className="truncate text-base font-medium">{update.title}</div>
-                <div className="text-muted-foreground truncate font-normal">{update.summary}</div>
+                <div className="truncate font-normal text-gray-600">{update.summary}</div>
               </div>
             </div>
           );
@@ -175,10 +165,10 @@ const AdminList = ({ onEditUpdate }: { onEditUpdate: (update: UpdateListItem) =>
 
           return (
             <div className="flex h-full flex-col items-end justify-between">
-              <div className="flex h-5 items-center justify-center">
-                <Status variant={update.sentAt ? "success" : undefined}>{update.sentAt ? "Sent" : "Draft"}</Status>
+              <div className="flex h-5 w-4 items-center justify-center">
+                <Status variant={update.sentAt ? "success" : undefined} />
               </div>
-              <div className="text-muted-foreground">{update.sentAt ? formatDate(update.sentAt) : "-"}</div>
+              <div className="text-gray-600">{update.sentAt ? formatDate(update.sentAt) : "-"}</div>
             </div>
           );
         },
@@ -210,7 +200,7 @@ const AdminList = ({ onEditUpdate }: { onEditUpdate: (update: UpdateListItem) =>
               <MutationButton
                 mutation={deleteMutation}
                 size="small"
-                param={deletingUpdate ?? ""}
+                param={{ companyId: company.id, id: deletingUpdate ?? "" }}
                 loadingText="Deleting..."
               >
                 Yes, delete
@@ -250,12 +240,12 @@ const ViewList = () => {
             <div className="flex flex-col gap-1">
               <div className="flex">
                 <div className="w-3xs truncate text-base font-medium">{update.title}</div>
-                <div className="text-muted-foreground flex-1 text-right font-[350]">
+                <div className="flex-1 text-right font-[350] text-gray-600">
                   {update.sentAt ? formatDate(update.sentAt) : "-"}
                 </div>
               </div>
               <div
-                className="text-muted-foreground truncate text-base leading-5 font-[350]"
+                className="truncate text-base leading-5 font-[350] text-gray-600"
                 style={{ width: "calc(100vw - 40px)" }}
               >
                 {update.summary}

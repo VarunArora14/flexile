@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { CalendarDate, getLocalTimeZone, today } from "@internationalized/date";
 import { useMutation } from "@tanstack/react-query";
+import { camelCase } from "lodash-es";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -18,16 +19,7 @@ import DatePicker from "@/components/DatePicker";
 import { MutationStatusButton } from "@/components/MutationButton";
 import NumberInput from "@/components/NumberInput";
 import { Button } from "@/components/ui/button";
-import {
-  DialogStack,
-  DialogStackBody,
-  DialogStackContent,
-  DialogStackDescription,
-  DialogStackFooter,
-  DialogStackHeader,
-  DialogStackPrevious,
-  DialogStackTitle,
-} from "@/components/ui/dialog-stack";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { optionGrantIssueDateRelationships, optionGrantTypes, optionGrantVestingTriggers } from "@/db/enums";
 import { useCurrentCompany } from "@/global";
@@ -38,39 +30,36 @@ import { company_administrator_equity_grants_path } from "@/utils/routes";
 
 const MAX_VESTING_DURATION_IN_MONTHS = 120;
 
-const detailsFormSchema = z
-  .object({
-    userId: z.string().min(1, "Must be present."),
-    optionPoolId: z.string().min(1, "Must be present."),
-    numberOfShares: z.number().gt(0),
-    issueDateRelationship: z.enum(optionGrantIssueDateRelationships),
-    optionGrantType: z.enum(optionGrantTypes),
-    optionExpiryMonths: z.number().min(0),
-    voluntaryTerminationExerciseMonths: z.number().min(0),
-    involuntaryTerminationExerciseMonths: z.number().min(0),
-    terminationWithCauseExerciseMonths: z.number().min(0),
-    deathExerciseMonths: z.number().min(0),
-    disabilityExerciseMonths: z.number().min(0),
-    retirementExerciseMonths: z.number().min(0),
-    boardApprovalDate: z.instanceof(CalendarDate, { message: "This field is required." }),
-  })
-  .refine((data) => data.optionGrantType !== "iso" || ["employee", "founder"].includes(data.issueDateRelationship), {
-    message: "ISOs can only be issued to employees or founders.",
-    path: ["optionGrantType"],
-  });
-const vestingFormSchema = z.object({
+const formSchema = documentSchema.extend({
+  userId: z.string().min(1, "Must be present."),
+  optionPoolId: z.string().min(1, "Must be present."),
+  numberOfShares: z.number().gt(0),
+  issueDateRelationship: z.enum(optionGrantIssueDateRelationships),
+  optionGrantType: z.enum(optionGrantTypes),
+  optionExpiryMonths: z.number().min(0),
   vestingTrigger: z.enum(optionGrantVestingTriggers),
   vestingScheduleId: z.string().nullish(),
   vestingCommencementDate: z.instanceof(CalendarDate, { message: "This field is required." }),
   totalVestingDurationMonths: z.number().nullish(),
   cliffDurationMonths: z.number().nullish(),
   vestingFrequencyMonths: z.string().nullish(),
+  voluntaryTerminationExerciseMonths: z.number().min(0),
+  involuntaryTerminationExerciseMonths: z.number().min(0),
+  terminationWithCauseExerciseMonths: z.number().min(0),
+  deathExerciseMonths: z.number().min(0),
+  disabilityExerciseMonths: z.number().min(0),
+  retirementExerciseMonths: z.number().min(0),
+  boardApprovalDate: z.instanceof(CalendarDate, { message: "This field is required." }),
 });
 
-const documentFormSchema = documentSchema.refine((data) => !!data.contract, {
-  message: "Equity contract is required",
-  path: ["contract"],
-});
+const refinedSchema = formSchema
+  .refine((data) => data.optionGrantType !== "iso" || ["employee", "founder"].includes(data.issueDateRelationship), {
+    message: "ISOs can only be issued to employees or founders.",
+    path: ["optionGrantType"],
+  })
+  .refine((data) => !!data.contract, { message: "Equity contract is required", path: ["contract"] });
+
+type FormValues = z.infer<typeof formSchema>;
 
 interface NewEquityGrantModalProps {
   open: boolean;
@@ -80,17 +69,18 @@ interface NewEquityGrantModalProps {
 export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGrantModalProps) {
   const trpcUtils = trpc.useUtils();
   const company = useCurrentCompany();
-  const [step, setStep] = useState(0);
   const [data] = trpc.equityGrants.new.useSuspenseQuery({ companyId: company.id });
   const [showExercisePeriods, setShowExercisePeriods] = useState(false);
 
-  const detailsForm = useForm({
-    resolver: zodResolver(detailsFormSchema),
+  const form = useForm({
+    resolver: zodResolver(refinedSchema),
     defaultValues: {
       userId: "",
       optionPoolId: data.optionPools[0]?.id ?? "",
       numberOfShares: 10_000,
       optionGrantType: "nso" as const,
+      vestingCommencementDate: today(getLocalTimeZone()),
+      vestingTrigger: "invoice_paid" as const,
       boardApprovalDate: today(getLocalTimeZone()),
       optionExpiryMonths: data.optionPools[0]?.defaultOptionExpiryMonths ?? 120,
       voluntaryTerminationExerciseMonths: data.optionPools[0]?.voluntaryTerminationExerciseMonths ?? 3,
@@ -104,23 +94,10 @@ export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGra
       optionPools: data.optionPools,
     },
   });
-  const vestingForm = useForm({
-    resolver: zodResolver(vestingFormSchema),
-    values: {
-      vestingTrigger: "invoice_paid" as const,
-      vestingCommencementDate: today(getLocalTimeZone()),
-    },
-  });
-  const documentForm = useForm({
-    resolver: zodResolver(documentFormSchema),
-    defaultValues: {
-      contract: "",
-    },
-  });
 
-  const recipientId = detailsForm.watch("userId");
-  const optionPoolId = detailsForm.watch("optionPoolId");
-  const numberOfShares = detailsForm.watch("numberOfShares");
+  const recipientId = form.watch("userId");
+  const optionPoolId = form.watch("optionPoolId");
+  const numberOfShares = form.watch("numberOfShares");
   const optionPool = data.optionPools.find((pool) => pool.id === optionPoolId);
   const recipient = data.users.find(({ id }) => id === recipientId);
 
@@ -129,76 +106,88 @@ export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGra
       ? formatMoney(Number(data.sharePriceUsd) * numberOfShares)
       : null;
 
+  const isFormValid = form.formState.isValid;
+
   useEffect(() => {
     if (!recipientId) return;
 
     const lastGrant = recipient?.lastGrant;
-    detailsForm.setValue("optionGrantType", lastGrant?.optionGrantType ?? "nso");
-    detailsForm.setValue("issueDateRelationship", lastGrant?.issueDateRelationship ?? "employee");
-    void detailsForm.trigger("issueDateRelationship");
-    if (!recipient?.activeContractor) vestingForm.setValue("vestingTrigger", "scheduled");
+    form.setValue("optionGrantType", lastGrant?.optionGrantType ?? "nso");
+    form.setValue("issueDateRelationship", lastGrant?.issueDateRelationship ?? "employee");
+    if (!recipient?.activeContractor) form.setValue("vestingTrigger", "scheduled");
   }, [recipientId]);
 
   useEffect(() => {
     if (!optionPool) return;
 
-    detailsForm.setValue("optionExpiryMonths", optionPool.defaultOptionExpiryMonths);
-    detailsForm.setValue("voluntaryTerminationExerciseMonths", optionPool.voluntaryTerminationExerciseMonths);
-    detailsForm.setValue("involuntaryTerminationExerciseMonths", optionPool.involuntaryTerminationExerciseMonths);
-    detailsForm.setValue("terminationWithCauseExerciseMonths", optionPool.terminationWithCauseExerciseMonths);
-    detailsForm.setValue("deathExerciseMonths", optionPool.deathExerciseMonths);
-    detailsForm.setValue("disabilityExerciseMonths", optionPool.disabilityExerciseMonths);
-    detailsForm.setValue("retirementExerciseMonths", optionPool.retirementExerciseMonths);
+    form.setValue("optionExpiryMonths", optionPool.defaultOptionExpiryMonths);
+    form.setValue("voluntaryTerminationExerciseMonths", optionPool.voluntaryTerminationExerciseMonths);
+    form.setValue("involuntaryTerminationExerciseMonths", optionPool.involuntaryTerminationExerciseMonths);
+    form.setValue("terminationWithCauseExerciseMonths", optionPool.terminationWithCauseExerciseMonths);
+    form.setValue("deathExerciseMonths", optionPool.deathExerciseMonths);
+    form.setValue("disabilityExerciseMonths", optionPool.disabilityExerciseMonths);
+    form.setValue("retirementExerciseMonths", optionPool.retirementExerciseMonths);
   }, [optionPool]);
 
   const createEquityGrant = useMutation({
-    mutationFn: async (values: z.infer<typeof documentFormSchema>) => {
-      const detailsValues = detailsForm.getValues();
-      const vestingValues = vestingForm.getValues();
+    mutationFn: async (values: FormValues) => {
+      if (optionPool && optionPool.availableShares < values.numberOfShares)
+        return form.setError("numberOfShares", {
+          message: `Not enough shares available in the option pool "${optionPool.name}" to create a grant with this number of options.`,
+        });
+
       const formData = new FormData();
 
-      formData.append("equity_grant[user_id]", detailsValues.userId);
+      formData.append("equity_grant[user_id]", values.userId);
 
-      formData.append("equity_grant[option_pool_id]", detailsValues.optionPoolId);
-      formData.append("equity_grant[number_of_shares]", detailsValues.numberOfShares.toString());
-      formData.append("equity_grant[issue_date_relationship]", detailsValues.issueDateRelationship);
-      formData.append("equity_grant[option_grant_type]", detailsValues.optionGrantType);
-      formData.append("equity_grant[option_expiry_months]", detailsValues.optionExpiryMonths.toString());
+      formData.append("equity_grant[option_pool_id]", values.optionPoolId);
+      formData.append("equity_grant[number_of_shares]", values.numberOfShares.toString());
+      formData.append("equity_grant[issue_date_relationship]", values.issueDateRelationship);
+      formData.append("equity_grant[option_grant_type]", values.optionGrantType);
+      formData.append("equity_grant[option_expiry_months]", values.optionExpiryMonths.toString());
       formData.append(
         "equity_grant[voluntary_termination_exercise_months]",
-        detailsValues.voluntaryTerminationExerciseMonths.toString(),
+        values.voluntaryTerminationExerciseMonths.toString(),
       );
       formData.append(
         "equity_grant[involuntary_termination_exercise_months]",
-        detailsValues.involuntaryTerminationExerciseMonths.toString(),
+        values.involuntaryTerminationExerciseMonths.toString(),
       );
       formData.append(
         "equity_grant[termination_with_cause_exercise_months]",
-        detailsValues.terminationWithCauseExerciseMonths.toString(),
+        values.terminationWithCauseExerciseMonths.toString(),
       );
-      formData.append("equity_grant[death_exercise_months]", detailsValues.deathExerciseMonths.toString());
-      formData.append("equity_grant[disability_exercise_months]", detailsValues.disabilityExerciseMonths.toString());
-      formData.append("equity_grant[retirement_exercise_months]", detailsValues.retirementExerciseMonths.toString());
-      formData.append("equity_grant[board_approval_date]", detailsValues.boardApprovalDate.toString());
-      formData.append("equity_grant[vesting_trigger]", vestingValues.vestingTrigger);
-      formData.append("equity_grant[vesting_commencement_date]", vestingValues.vestingCommencementDate.toString());
+      formData.append("equity_grant[death_exercise_months]", values.deathExerciseMonths.toString());
+      formData.append("equity_grant[disability_exercise_months]", values.disabilityExerciseMonths.toString());
+      formData.append("equity_grant[retirement_exercise_months]", values.retirementExerciseMonths.toString());
+      formData.append("equity_grant[board_approval_date]", values.boardApprovalDate.toString());
+      formData.append("equity_grant[vesting_trigger]", values.vestingTrigger);
+      formData.append("equity_grant[vesting_commencement_date]", values.vestingCommencementDate.toString());
       formData.append("equity_grant[contract]", values.contract);
 
-      if (vestingValues.vestingTrigger === "scheduled" && vestingValues.vestingScheduleId) {
-        formData.append("equity_grant[vesting_schedule_id]", vestingValues.vestingScheduleId);
+      if (values.vestingTrigger === "scheduled") {
+        if (!values.vestingScheduleId) return form.setError("vestingScheduleId", { message: "Must be present." });
+        formData.append("equity_grant[vesting_schedule_id]", values.vestingScheduleId);
 
-        if (
-          vestingValues.vestingScheduleId === "custom" &&
-          vestingValues.totalVestingDurationMonths &&
-          vestingValues.cliffDurationMonths &&
-          vestingValues.vestingFrequencyMonths
-        ) {
-          formData.append(
-            "equity_grant[total_vesting_duration_months]",
-            vestingValues.totalVestingDurationMonths.toString(),
-          );
-          formData.append("equity_grant[cliff_duration_months]", vestingValues.cliffDurationMonths.toString());
-          formData.append("equity_grant[vesting_frequency_months]", vestingValues.vestingFrequencyMonths);
+        if (values.vestingScheduleId === "custom") {
+          if (!values.totalVestingDurationMonths || values.totalVestingDurationMonths <= 0)
+            return form.setError("totalVestingDurationMonths", { message: "Must be present and greater than 0." });
+          if (values.totalVestingDurationMonths > MAX_VESTING_DURATION_IN_MONTHS)
+            return form.setError("totalVestingDurationMonths", {
+              message: `Must not be more than ${MAX_VESTING_DURATION_IN_MONTHS} months (${MAX_VESTING_DURATION_IN_MONTHS / 12} years).`,
+            });
+          if (values.cliffDurationMonths == null || values.cliffDurationMonths < 0)
+            return form.setError("cliffDurationMonths", { message: "Must be present and greater than or equal to 0." });
+          if (values.cliffDurationMonths >= values.totalVestingDurationMonths)
+            return form.setError("cliffDurationMonths", { message: "Must be less than total vesting duration." });
+          if (!values.vestingFrequencyMonths)
+            return form.setError("vestingFrequencyMonths", { message: "Must be present." });
+          if (Number(values.vestingFrequencyMonths) > values.totalVestingDurationMonths)
+            return form.setError("vestingFrequencyMonths", { message: "Must be less than total vesting duration." });
+
+          formData.append("equity_grant[total_vesting_duration_months]", values.totalVestingDurationMonths.toString());
+          formData.append("equity_grant[cliff_duration_months]", values.cliffDurationMonths.toString());
+          formData.append("equity_grant[vesting_frequency_months]", values.vestingFrequencyMonths);
         }
       }
 
@@ -211,10 +200,18 @@ export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGra
       if (!response.ok) {
         const errorInfoSchema = z.object({
           error: z.string(),
+          attribute_name: z
+            .string()
+            .nullable()
+            .transform((value) => {
+              value = camelCase(value ?? "");
+              const isFormField = (val: string): val is keyof FormValues => val in formSchema.shape;
+              return value && isFormField(value) ? value : "root";
+            }),
         });
 
         const errorInfo = errorInfoSchema.parse(JSON.parse(await response.text()));
-        documentForm.setError("root", { message: errorInfo.error });
+        form.setError(errorInfo.attribute_name, { message: errorInfo.error });
         throw new Error(await response.text());
       }
       await trpcUtils.equityGrants.list.invalidate();
@@ -225,331 +222,281 @@ export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGra
     },
   });
 
-  const submitDetails = detailsForm.handleSubmit((values: z.infer<typeof detailsFormSchema>) => {
-    if (optionPool && optionPool.availableShares < values.numberOfShares)
-      return detailsForm.setError("numberOfShares", {
-        message: `Not enough shares available in the option pool "${optionPool.name}" to create a grant with this number of options.`,
-      });
-    setStep(1);
-  });
-  const submitVesting = vestingForm.handleSubmit((values: z.infer<typeof vestingFormSchema>) => {
-    if (values.vestingTrigger === "scheduled") {
-      if (!values.vestingScheduleId) return vestingForm.setError("vestingScheduleId", { message: "Must be present." });
-      if (values.vestingScheduleId === "custom") {
-        if (!values.totalVestingDurationMonths || values.totalVestingDurationMonths <= 0)
-          return vestingForm.setError("totalVestingDurationMonths", { message: "Must be present and greater than 0." });
-        if (values.totalVestingDurationMonths > MAX_VESTING_DURATION_IN_MONTHS)
-          return vestingForm.setError("totalVestingDurationMonths", {
-            message: `Must not be more than ${MAX_VESTING_DURATION_IN_MONTHS} months (${MAX_VESTING_DURATION_IN_MONTHS / 12} years).`,
-          });
-        if (values.cliffDurationMonths == null || values.cliffDurationMonths < 0)
-          return vestingForm.setError("cliffDurationMonths", {
-            message: "Must be present and greater than or equal to 0.",
-          });
-        if (values.cliffDurationMonths >= values.totalVestingDurationMonths)
-          return vestingForm.setError("cliffDurationMonths", { message: "Must be less than total vesting duration." });
-        if (!values.vestingFrequencyMonths)
-          return vestingForm.setError("vestingFrequencyMonths", { message: "Must be present." });
-        if (Number(values.vestingFrequencyMonths) > values.totalVestingDurationMonths)
-          return vestingForm.setError("vestingFrequencyMonths", {
-            message: "Must be less than total vesting duration.",
-          });
-      }
-    }
-    setStep(2);
-  });
-  const submit = documentForm.handleSubmit((values) => createEquityGrant.mutate(values));
+  const submit = form.handleSubmit((values: FormValues) => createEquityGrant.mutate(values));
 
   const handleClose = () => {
     setShowExercisePeriods(false);
-    detailsForm.reset();
-    vestingForm.reset();
-    documentForm.reset();
-    setStep(0);
+    form.reset();
     onOpenChange(false);
   };
 
   return (
-    <DialogStack
-      open={open}
-      onOpenChange={(open) => (open ? undefined : handleClose())}
-      activeIndex={step}
-      setActiveIndex={setStep}
-    >
-      <DialogStackBody>
-        <DialogStackContent>
-          <DialogStackHeader>
-            <DialogStackTitle>New equity grant</DialogStackTitle>
-            <DialogStackDescription>Fill in the details below to create an equity grant.</DialogStackDescription>
-          </DialogStackHeader>
-          <Form {...detailsForm}>
-            <form onSubmit={(e) => void submitDetails(e)} className="contents">
-              <div className="grid h-auto gap-4 overflow-y-auto">
-                <FormField
-                  control={detailsForm.control}
-                  name="userId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Recipient</FormLabel>
-                      <FormControl>
-                        <ComboBox
-                          {...field}
-                          options={data.users
-                            .sort((a, b) => a.name.localeCompare(b.name))
-                            .map((user) => ({
-                              label: `${user.name} (${user.email})`,
-                              value: user.id,
-                              keywords: [user.name, user.email],
-                            }))}
-                          placeholder="Select recipient"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+    <Dialog open={open} onOpenChange={handleClose}>
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-medium">New equity grant</DialogTitle>
+          <DialogDescription className="mb-[-16px]">
+            Fill in the details below to create an equity grant.
+          </DialogDescription>
+        </DialogHeader>
 
+        <Form {...form}>
+          <form onSubmit={(e) => void submit(e)} className="grid gap-8">
+            <div></div>
+            <div className="grid gap-4">
+              <h2 className="text-base font-medium">Recipient details</h2>
+              <FormField
+                control={form.control}
+                name="userId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Recipient</FormLabel>
+                    <FormControl>
+                      <ComboBox
+                        {...field}
+                        options={data.users
+                          .sort((a, b) => a.name.localeCompare(b.name))
+                          .map((user) => ({
+                            label: `${user.name} (${user.email})`,
+                            value: user.id,
+                            keywords: [user.name, user.email],
+                          }))}
+                        placeholder="Select recipient"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="issueDateRelationship"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Relationship to company</FormLabel>
+                    <FormControl>
+                      <ComboBox
+                        {...field}
+                        options={Object.entries(relationshipDisplayNames).map(([key, value]) => ({
+                          label: value,
+                          value: key,
+                        }))}
+                        placeholder="Select relationship"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid gap-4">
+              <h2 className="text-base font-medium">Option grant details</h2>
+              <FormField
+                control={form.control}
+                name="optionPoolId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Option pool</FormLabel>
+                    <FormControl>
+                      <ComboBox
+                        {...field}
+                        options={data.optionPools.map((optionPool) => ({
+                          label: optionPool.name,
+                          value: optionPool.id,
+                        }))}
+                        placeholder="Select option pool"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                    {optionPool ? (
+                      <FormDescription>
+                        Available shares in this option pool: {optionPool.availableShares.toLocaleString()}
+                      </FormDescription>
+                    ) : null}
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="numberOfShares"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Number of options</FormLabel>
+                    <FormControl>
+                      <NumberInput {...field} />
+                    </FormControl>
+                    <FormMessage />
+                    {estimatedValue ? (
+                      <FormDescription>
+                        Estimated value of {estimatedValue}, based on a {formatMoney(Number(data.sharePriceUsd))} share
+                        price
+                      </FormDescription>
+                    ) : null}
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={detailsForm.control}
-                  name="issueDateRelationship"
+                  control={form.control}
+                  name="optionGrantType"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Relationship to company</FormLabel>
+                      <FormLabel>Grant type</FormLabel>
                       <FormControl>
                         <ComboBox
                           {...field}
-                          options={Object.entries(relationshipDisplayNames).map(([key, value]) => ({
+                          options={Object.entries(optionGrantTypeDisplayNames).map(([key, value]) => ({
                             label: value,
                             value: key,
                           }))}
-                          placeholder="Select relationship"
+                          placeholder="Select grant type"
                         />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={detailsForm.control}
-                  name="optionPoolId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Option pool</FormLabel>
-                      <FormControl>
-                        <ComboBox
-                          {...field}
-                          options={data.optionPools.map((optionPool) => ({
-                            label: optionPool.name,
-                            value: optionPool.id,
-                          }))}
-                          placeholder="Select option pool"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                      {optionPool ? (
-                        <FormDescription>
-                          Available shares in this option pool: {optionPool.availableShares.toLocaleString()}
-                        </FormDescription>
-                      ) : null}
-                    </FormItem>
-                  )}
-                />
 
                 <FormField
-                  control={detailsForm.control}
-                  name="numberOfShares"
+                  control={form.control}
+                  name="optionExpiryMonths"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Number of options</FormLabel>
+                      <FormLabel>Expiration period</FormLabel>
                       <FormControl>
-                        <NumberInput {...field} />
-                      </FormControl>
-                      <FormMessage />
-                      {estimatedValue ? (
-                        <FormDescription>
-                          Estimated value of {estimatedValue}, based on a {formatMoney(Number(data.sharePriceUsd))}{" "}
-                          share price
-                        </FormDescription>
-                      ) : null}
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={detailsForm.control}
-                    name="optionGrantType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Grant type</FormLabel>
-                        <FormControl>
-                          <ComboBox
-                            {...field}
-                            options={Object.entries(optionGrantTypeDisplayNames).map(([key, value]) => ({
-                              label: value,
-                              value: key,
-                            }))}
-                            placeholder="Select grant type"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={detailsForm.control}
-                    name="optionExpiryMonths"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Expiration period</FormLabel>
-                        <FormControl>
-                          <NumberInput {...field} suffix="months" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="grid gap-4">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="flex h-auto w-full items-start justify-between p-0 text-left whitespace-break-spaces hover:bg-transparent"
-                    onClick={() => setShowExercisePeriods(!showExercisePeriods)}
-                  >
-                    <h2 className="text-base">Customize post-termination exercise periods</h2>
-                    {showExercisePeriods ? (
-                      <ChevronDown className="mt-[3px] size-5" />
-                    ) : (
-                      <ChevronRight className="mt-[3px] size-5" />
-                    )}
-                  </Button>
-
-                  {showExercisePeriods ? (
-                    <div className="grid gap-4">
-                      <FormField
-                        control={detailsForm.control}
-                        name="voluntaryTerminationExerciseMonths"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Voluntary termination exercise period</FormLabel>
-                            <FormControl>
-                              <NumberInput {...field} suffix="months" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={detailsForm.control}
-                        name="involuntaryTerminationExerciseMonths"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Involuntary termination exercise period</FormLabel>
-                            <FormControl>
-                              <NumberInput {...field} suffix="months" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={detailsForm.control}
-                        name="terminationWithCauseExerciseMonths"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Termination with cause exercise period</FormLabel>
-                            <FormControl>
-                              <NumberInput {...field} suffix="months" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={detailsForm.control}
-                        name="deathExerciseMonths"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Death exercise period</FormLabel>
-                            <FormControl>
-                              <NumberInput {...field} suffix="months" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={detailsForm.control}
-                        name="disabilityExerciseMonths"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Disability exercise period</FormLabel>
-                            <FormControl>
-                              <NumberInput {...field} suffix="months" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={detailsForm.control}
-                        name="retirementExerciseMonths"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Retirement exercise period</FormLabel>
-                            <FormControl>
-                              <NumberInput {...field} suffix="months" />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  ) : null}
-                </div>
-                <FormField
-                  control={detailsForm.control}
-                  name="boardApprovalDate"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <DatePicker {...field} label="Board approval date" granularity="day" />
+                        <NumberInput {...field} suffix="months" />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
+              <div className="grid gap-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="flex h-auto w-full items-start justify-between p-0 text-left whitespace-break-spaces hover:bg-transparent"
+                  onClick={() => setShowExercisePeriods(!showExercisePeriods)}
+                >
+                  <h2 className="text-base">Customize post-termination exercise periods</h2>
+                  {showExercisePeriods ? (
+                    <ChevronDown className="mt-[3px] size-5" />
+                  ) : (
+                    <ChevronRight className="mt-[3px] size-5" />
+                  )}
+                </Button>
 
-              {step === 0 && (
-                <DialogStackFooter>
-                  <Button variant="outline" onClick={handleClose}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={!detailsForm.formState.isValid}>
-                    Continue
-                  </Button>
-                </DialogStackFooter>
-              )}
-            </form>
-          </Form>
-        </DialogStackContent>
-        <DialogStackContent>
-          <DialogStackHeader>
-            <DialogStackTitle>Vesting details</DialogStackTitle>
-          </DialogStackHeader>
-          <Form {...vestingForm}>
-            <form onSubmit={(e) => void submitVesting(e)} className="contents">
+                {showExercisePeriods ? (
+                  <div className="grid gap-4">
+                    <FormField
+                      control={form.control}
+                      name="voluntaryTerminationExerciseMonths"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Voluntary termination exercise period</FormLabel>
+                          <FormControl>
+                            <NumberInput {...field} suffix="months" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="involuntaryTerminationExerciseMonths"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Involuntary termination exercise period</FormLabel>
+                          <FormControl>
+                            <NumberInput {...field} suffix="months" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="terminationWithCauseExerciseMonths"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Termination with cause exercise period</FormLabel>
+                          <FormControl>
+                            <NumberInput {...field} suffix="months" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="deathExerciseMonths"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Death exercise period</FormLabel>
+                          <FormControl>
+                            <NumberInput {...field} suffix="months" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="disabilityExerciseMonths"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Disability exercise period</FormLabel>
+                          <FormControl>
+                            <NumberInput {...field} suffix="months" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="retirementExerciseMonths"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Retirement exercise period</FormLabel>
+                          <FormControl>
+                            <NumberInput {...field} suffix="months" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                ) : null}
+              </div>
+              <FormField
+                control={form.control}
+                name="boardApprovalDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <DatePicker {...field} label="Board approval date" granularity="day" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid gap-4">
+              <h2 className="text-base font-medium">Vesting details</h2>
               {recipient?.activeContractor ? (
                 <FormField
-                  control={vestingForm.control}
+                  control={form.control}
                   name="vestingTrigger"
                   render={({ field }) => (
                     <FormItem>
@@ -570,10 +517,10 @@ export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGra
                 />
               ) : null}
 
-              {vestingForm.watch("vestingTrigger") === "scheduled" && (
+              {form.watch("vestingTrigger") === "scheduled" && (
                 <>
                   <FormField
-                    control={vestingForm.control}
+                    control={form.control}
                     name="vestingScheduleId"
                     render={({ field }) => (
                       <FormItem>
@@ -597,7 +544,7 @@ export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGra
                   />
 
                   <FormField
-                    control={vestingForm.control}
+                    control={form.control}
                     name="vestingCommencementDate"
                     render={({ field }) => (
                       <FormItem>
@@ -609,10 +556,10 @@ export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGra
                     )}
                   />
 
-                  {vestingForm.watch("vestingScheduleId") === "custom" && (
+                  {form.watch("vestingScheduleId") === "custom" && (
                     <>
                       <FormField
-                        control={vestingForm.control}
+                        control={form.control}
                         name="totalVestingDurationMonths"
                         render={({ field }) => (
                           <FormItem>
@@ -626,7 +573,7 @@ export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGra
                       />
 
                       <FormField
-                        control={vestingForm.control}
+                        control={form.control}
                         name="cliffDurationMonths"
                         render={({ field }) => (
                           <FormItem>
@@ -640,7 +587,7 @@ export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGra
                       />
 
                       <FormField
-                        control={vestingForm.control}
+                        control={form.control}
                         name="vestingFrequencyMonths"
                         render={({ field }) => (
                           <FormItem>
@@ -664,50 +611,26 @@ export default function NewEquityGrantModal({ open, onOpenChange }: NewEquityGra
                   )}
                 </>
               )}
-              {step === 1 && (
-                <DialogStackFooter>
-                  <DialogStackPrevious>
-                    <Button variant="outline">Back</Button>
-                  </DialogStackPrevious>
-                  <Button type="submit" disabled={!vestingForm.formState.isValid}>
-                    Continue
-                  </Button>
-                </DialogStackFooter>
-              )}
-            </form>
-          </Form>
-        </DialogStackContent>
-        <DialogStackContent>
-          <DialogStackHeader>
-            <DialogStackTitle>Equity contract</DialogStackTitle>
-          </DialogStackHeader>
-          <Form {...documentForm}>
-            <form onSubmit={(e) => void submit(e)} className="contents">
-              <NewDocumentField type="stock_option_agreement" />
+            </div>
 
-              {documentForm.formState.errors.root ? (
-                <div className="grid gap-2">
-                  <div className="text-red text-center text-xs">
-                    {documentForm.formState.errors.root.message ?? "An error occurred"}
-                  </div>
+            <NewDocumentField type="stock_option_agreement" />
+
+            {form.formState.errors.root ? (
+              <div className="grid gap-2">
+                <div className="text-red text-center text-xs">
+                  {form.formState.errors.root.message ?? "An error occurred"}
                 </div>
-              ) : null}
-              <DialogStackFooter>
-                <DialogStackPrevious>
-                  <Button variant="outline">Back</Button>
-                </DialogStackPrevious>
-                <MutationStatusButton
-                  type="submit"
-                  mutation={createEquityGrant}
-                  disabled={!documentForm.formState.isValid}
-                >
-                  Create grant
-                </MutationStatusButton>
-              </DialogStackFooter>
-            </form>
-          </Form>
-        </DialogStackContent>
-      </DialogStackBody>
-    </DialogStack>
+              </div>
+            ) : null}
+
+            <div className="flex justify-end">
+              <MutationStatusButton type="submit" size="small" mutation={createEquityGrant} disabled={!isFormValid}>
+                Create grant
+              </MutationStatusButton>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }

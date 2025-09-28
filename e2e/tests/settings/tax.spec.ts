@@ -9,9 +9,9 @@ import { usersFactory } from "@test/factories/users";
 import { fillDatePicker, selectComboboxOption } from "@test/helpers";
 import { login } from "@test/helpers/auth";
 import { expect, test } from "@test/index";
-import { desc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { BusinessType, TaxClassification } from "@/db/enums";
-import { companies, userComplianceInfos, users } from "@/db/schema";
+import { companies, users } from "@/db/schema";
 
 test.describe("Tax settings", () => {
   let company: typeof companies.$inferSelect;
@@ -36,14 +36,11 @@ test.describe("Tax settings", () => {
     test.beforeEach(async () => {
       await companyContractorsFactory.create({ userId: user.id, companyId: company.id });
       const { company: company2 } = await companiesFactory.createCompletedOnboarding();
-      await companyContractorsFactory.create(
-        {
-          userId: user.id,
-          companyId: company2.id,
-          contractSignedElsewhere: true,
-        },
-        { withoutBankAccount: true },
-      );
+      await companyContractorsFactory.create({
+        userId: user.id,
+        companyId: company2.id,
+        contractSignedElsewhere: true,
+      });
     });
 
     test("allows editing tax information", async ({ page }) => {
@@ -155,13 +152,10 @@ test.describe("Tax settings", () => {
         .findFirst({
           where: eq(users.id, user.id),
           with: {
-            userComplianceInfos: {
-              orderBy: [desc(userComplianceInfos.createdAt)],
-            },
+            userComplianceInfos: true,
           },
         })
         .then(takeOrThrow);
-
       expect(updatedUser.userComplianceInfos).toHaveLength(2);
 
       expect(updatedUser.userComplianceInfos[0]?.deletedAt).not.toBeNull();

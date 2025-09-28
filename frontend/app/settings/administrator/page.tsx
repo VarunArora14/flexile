@@ -111,7 +111,7 @@ export default function SettingsPage() {
                 />
                 <Avatar
                   className={`flex size-12 items-center justify-center rounded-md ${
-                    isDefaultLogo ? "border-input bg-accent border" : ""
+                    isDefaultLogo ? "border-input border bg-gray-50/50" : ""
                   }`}
                 >
                   <AvatarImage

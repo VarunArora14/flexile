@@ -6,11 +6,9 @@ class Internal::SettingsController < Internal::Settings::BaseController
   def update
     authorize :user
 
-    settings_params = params.require(:settings).permit(:email, :preferred_name)
-
     error_message = UpdateUser.new(
       user: Current.user,
-      update_params: settings_params
+      update_params: params.permit(:email, :preferred_name)
     ).process
 
     if error_message.nil?

@@ -2,7 +2,6 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
 import React, { useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -22,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardHeader } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useCurrentCompany, useCurrentUser, useUserStore } from "@/global";
+import { useCurrentCompany, useCurrentUser } from "@/global";
 import defaultLogo from "@/images/default-company-logo.svg";
 import { MAX_PREFERRED_NAME_LENGTH, MIN_EMAIL_LENGTH } from "@/models";
 import { request } from "@/utils/request";
@@ -48,15 +47,12 @@ const DetailsSection = () => {
 
   const saveMutation = useMutation({
     mutationFn: async (values: { email: string; preferredName: string }) => {
-      const payload = { settings: { email: values.email, preferred_name: values.preferredName } };
-
       const response = await request({
         url: settings_path(),
         method: "PATCH",
         accept: "json",
-        jsonData: payload,
+        jsonData: { settings: { email: values.email, preferred_name: values.preferredName } },
       });
-
       if (!response.ok)
         throw new Error(z.object({ error_message: z.string() }).parse(await response.json()).error_message);
     },
@@ -113,7 +109,6 @@ const DetailsSection = () => {
 
 const LeaveWorkspaceSection = () => {
   const user = useCurrentUser();
-  const { logout } = useUserStore();
   const company = useCurrentCompany();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -142,13 +137,10 @@ const LeaveWorkspaceSection = () => {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-
-      if (user.companies.length > 1) {
+      setTimeout(() => {
+        setIsModalOpen(false);
         router.push("/dashboard");
-      } else {
-        await signOut({ redirect: false }).then(logout);
-        router.push("/login");
-      }
+      }, 1000);
     },
     onError: (error: Error) => {
       setErrorMessage(error.message);
@@ -161,7 +153,7 @@ const LeaveWorkspaceSection = () => {
   }
 
   // Don't show leave option if user has no leavable roles
-  if (!user.roles.worker && !user.roles.lawyer) {
+  if (!user.roles.worker && !user.roles.investor && !user.roles.lawyer) {
     return null;
   }
 

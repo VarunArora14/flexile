@@ -2,23 +2,13 @@ import { db, takeOrThrow } from "@test/db";
 import { companiesFactory } from "@test/factories/companies";
 import { companyAdministratorsFactory } from "@test/factories/companyAdministrators";
 import { login } from "@test/helpers/auth";
-import { expect, type FrameLocator, test, withinModal } from "@test/index";
+import { expect, test, withinModal } from "@test/index";
 import { and, eq, isNull } from "drizzle-orm";
 import { companyStripeAccounts, users } from "@/db/schema";
 
 // allow green builds on OSS PRs that don't have a stripe sandbox key, but fail on CI if something changes on Stripe's end
 test.skip(() => process.env.STRIPE_SECRET_KEY === "dummy");
 test.describe("Company administrator settings - payment details", () => {
-  const finishStripeBankLinking = async (stripeBankFrame: FrameLocator) => {
-    const notNowButton = stripeBankFrame.getByTestId("link-not-now-button");
-    const doneButton = stripeBankFrame.getByTestId("done-button");
-    await expect(notNowButton.or(doneButton)).toBeVisible();
-    if (await notNowButton.isVisible()) {
-      await notNowButton.click();
-    }
-    await doneButton.click();
-  };
-
   test("allows connecting a bank account", async ({ page }) => {
     const { company } = await companiesFactory.create({ stripeCustomerId: null }, { withoutBankAccount: true });
     const { administrator } = await companyAdministratorsFactory.create({ companyId: company.id });
@@ -43,7 +33,8 @@ test.describe("Company administrator settings - payment details", () => {
         await stripeBankFrame.getByTestId("agree-button").click();
         await stripeBankFrame.getByTestId("success").click();
         await stripeBankFrame.getByTestId("select-button").click();
-        await finishStripeBankLinking(stripeBankFrame);
+        await stripeBankFrame.getByTestId("link-not-now-button").click();
+        await stripeBankFrame.getByTestId("done-button").click();
       },
       { page, title: "Link your bank account" },
     );
@@ -66,7 +57,8 @@ test.describe("Company administrator settings - payment details", () => {
         await stripeBankFrame.getByTestId("agree-button").click();
         await stripeBankFrame.getByTestId("high balance").click();
         await stripeBankFrame.getByTestId("select-button").click();
-        await finishStripeBankLinking(stripeBankFrame);
+        await stripeBankFrame.getByTestId("link-not-now-button").click();
+        await stripeBankFrame.getByTestId("done-button").click();
       },
       { page, title: "Link your bank account" },
     );
@@ -110,7 +102,8 @@ test.describe("Company administrator settings - payment details", () => {
         await stripeBankFrame.getByTestId("manualEntry-accountNumber-input").fill("000123456789");
         await stripeBankFrame.getByTestId("manualEntry-confirmAccountNumber-input").fill("000123456789");
         await stripeBankFrame.getByTestId("continue-button").click();
-        await finishStripeBankLinking(stripeBankFrame);
+        await stripeBankFrame.getByTestId("link-not-now-button").click();
+        await stripeBankFrame.getByTestId("done-button").click();
       },
       { page, title: "Link your bank account" },
     );
